@@ -20,6 +20,11 @@ export default function GroupClient({ initialGroup }: { initialGroup: Group }) {
   const [group, setGroup] = useState<Group>(initialGroup);
   const [me, setMe] = useState<string | null | undefined>(undefined);
   const [tab, setTab] = useState<Tab>("expenses");
+  const [shareOpen, setShareOpen] = useState(false);
+  // navigator is unavailable during the server render pass.
+  const [canShare] = useState(
+    () => typeof navigator !== "undefined" && !!navigator.share
+  );
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -31,8 +36,33 @@ export default function GroupClient({ initialGroup }: { initialGroup: Group }) {
     toastTimer.current = setTimeout(() => setToast(null), 2500);
   }, []);
 
-  // Resolve identity from localStorage.
+  // Resolve identity: a personal link (/g/{id}#me=Ім'я) wins, then localStorage.
   useEffect(() => {
+    let fromLink: string | null = null;
+    try {
+      const hash = window.location.hash;
+      const claimed = hash.startsWith("#")
+        ? new URLSearchParams(hash.slice(1)).get("me")
+        : null;
+      if (claimed) {
+        const member = initialGroup.members.find(
+          (m) => nameKey(m.name) === nameKey(claimed)
+        );
+        if (member) fromLink = member.name;
+        // Drop the hash so copying the URL from the address bar shares the
+        // group, not this person's identity.
+        history.replaceState(
+          null,
+          "",
+          window.location.pathname + window.location.search
+        );
+      }
+    } catch {}
+    if (fromLink) {
+      chooseIdentity(fromLink);
+      return;
+    }
+
     let saved: string | null = null;
     try {
       saved = localStorage.getItem(storageKey);
@@ -89,11 +119,10 @@ export default function GroupClient({ initialGroup }: { initialGroup: Group }) {
     setMe(null);
   }
 
-  async function share() {
-    const url = window.location.href;
+  async function shareUrl(url: string, title: string) {
     if (navigator.share) {
       try {
-        await navigator.share({ title: `Splitka: ${group.name}`, url });
+        await navigator.share({ title, url });
         return;
       } catch {}
     }
@@ -104,6 +133,10 @@ export default function GroupClient({ initialGroup }: { initialGroup: Group }) {
       showToast(url);
     }
   }
+
+  const groupUrl = () => `${window.location.origin}/g/${group.id}`;
+  const personalUrl = (name: string) =>
+    `${groupUrl()}#me=${encodeURIComponent(name)}`;
 
   if (me === undefined) {
     return <main className="container" />;
@@ -143,7 +176,10 @@ export default function GroupClient({ initialGroup }: { initialGroup: Group }) {
             <button onClick={resetIdentity}>змінити</button>
           </div>
         </div>
-        <button className="btn small secondary" onClick={share}>
+        <button
+          className="btn small secondary"
+          onClick={() => setShareOpen(true)}
+        >
           Поділитися
         </button>
       </div>
@@ -168,6 +204,49 @@ export default function GroupClient({ initialGroup }: { initialGroup: Group }) {
       ) : (
         <BalancesTab group={group} me={me} onChange={setGroup} showToast={showToast} />
       )}
+
+      <Modal
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        title="Поділитися групою"
+      >
+        <div className="share-title">Лінк групи</div>
+        <div className="share-row">
+          <span className="share-name">
+            Людина сама обере, хто вона в групі
+          </span>
+          <button
+            className="btn small secondary"
+            onClick={() => shareUrl(groupUrl(), `Splitka: ${group.name}`)}
+          >
+            {canShare ? "Надіслати" : "Копіювати"}
+          </button>
+        </div>
+
+        <div className="share-title">
+          Особисті лінки — відкривши свій, людина одразу заходить під своїм
+          ім&apos;ям, у будь-якому браузері
+        </div>
+        {group.members.map((m) => (
+          <div className="share-row" key={m.name}>
+            <span className="share-name">
+              {m.name}
+              {m.name === me ? " (ви)" : ""}
+            </span>
+            <button
+              className="btn small secondary"
+              onClick={() =>
+                shareUrl(
+                  personalUrl(m.name),
+                  `Splitka: ${group.name} — лінк для ${m.name}`
+                )
+              }
+            >
+              {canShare ? "Надіслати" : "Копіювати"}
+            </button>
+          </div>
+        ))}
+      </Modal>
 
       {toast && <div className="toast">{toast}</div>}
       <p className="footer-note">

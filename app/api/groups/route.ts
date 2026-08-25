@@ -3,7 +3,9 @@ import { createGroup } from "@/lib/store";
 import {
   CURRENCIES,
   MAX_GROUP_NAME_LEN,
+  MAX_MEMBERS,
   MAX_NAME_LEN,
+  nameKey,
   normalizeName,
 } from "@/lib/types";
 
@@ -26,11 +28,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Вкажіть ваше ім'я (до 30 символів)" }, { status: 400 });
     }
 
+    // Optional list of friend names added right at creation.
+    const rawMembers: unknown = body?.members ?? [];
+    if (!Array.isArray(rawMembers)) {
+      return NextResponse.json({ error: "Некоректний список учасників" }, { status: 400 });
+    }
+    const seen = new Set([nameKey(creator)]);
+    const extras: string[] = [];
+    for (const raw of rawMembers) {
+      const member = normalizeName(String(raw));
+      if (!member) continue;
+      if (member.length > MAX_NAME_LEN) {
+        return NextResponse.json({ error: "Ім'я учасника задовге (до 30 символів)" }, { status: 400 });
+      }
+      const key = nameKey(member);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      extras.push(member);
+    }
+    if (1 + extras.length > MAX_MEMBERS) {
+      return NextResponse.json({ error: "Забагато учасників у групі" }, { status: 400 });
+    }
+
     const now = Date.now();
     const group = await createGroup({
       name,
       currency,
-      members: [{ name: creator, createdAt: now }],
+      // Stagger createdAt so the member order is stable after re-assembly.
+      members: [creator, ...extras].map((m, i) => ({ name: m, createdAt: now + i })),
       entries: [],
       createdAt: now,
     });

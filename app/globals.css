@@ -197,6 +197,59 @@ button {
   color: var(--accent-dark);
 }
 
+.chip.removable:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.chip .chip-x {
+  color: #b6c4c0;
+  font-size: 12px;
+  margin-left: 2px;
+}
+
+.chip.removable:hover .chip-x {
+  color: var(--danger);
+}
+
+.member-add-row {
+  display: flex;
+  gap: 8px;
+}
+
+.member-add-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.member-add-row .btn {
+  flex: none;
+}
+
+.share-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.share-row:last-child {
+  border-bottom: none;
+}
+
+.share-name {
+  font-size: 15px;
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.share-row .btn {
+  flex: none;
+}
+
 .group-header {
   display: flex;
   align-items: flex-start;
@@ -415,7 +468,8 @@ button {
   font-size: 14px;
   font-weight: 600;
   box-shadow: var(--shadow);
-  z-index: 50;
+  /* Above modal overlays: copy feedback fires from inside the share modal. */
+  z-index: 150;
   white-space: nowrap;
 }
 
