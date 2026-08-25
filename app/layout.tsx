@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import PwaRegister from "@/components/PwaRegister";
+import PwaInstallPrompt from "@/components/PwaInstallPrompt";
 
 export const metadata: Metadata = {
   title: "Splitka — ділимо витрати разом",
@@ -34,6 +35,7 @@ export default function RootLayout({
       <body>
         {children}
         <PwaRegister />
+        <PwaInstallPrompt />
       </body>
     </html>
   );
