@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getGroup, saveGroup } from "@/lib/store";
+import { addEntry, getGroup } from "@/lib/store";
 import {
   Entry,
   MAX_AMOUNT,
   MAX_DESC_LEN,
-  MAX_ENTRIES,
   nameKey,
   normalizeName,
 } from "@/lib/types";
@@ -35,12 +34,10 @@ export async function POST(
       return NextResponse.json({ error: "Оберіть, між ким ділити" }, { status: 400 });
     }
 
+    // Validation reads the group; the write itself is atomic in the store.
     const group = await getGroup(id);
     if (!group) {
       return NextResponse.json({ error: "Групу не знайдено" }, { status: 404 });
-    }
-    if (group.entries.length >= MAX_ENTRIES) {
-      return NextResponse.json({ error: "Досягнуто ліміт записів у групі" }, { status: 400 });
     }
 
     const byKey = new Map(group.members.map((m) => [nameKey(m.name), m.name]));
@@ -69,9 +66,14 @@ export async function POST(
       splitAmong,
       createdAt: Date.now(),
     };
-    group.entries.push(entry);
-    await saveGroup(group);
-    return NextResponse.json(group, { status: 201 });
+    const res = await addEntry(id, entry);
+    if (res.status === "full") {
+      return NextResponse.json({ error: "Досягнуто ліміт записів у групі" }, { status: 400 });
+    }
+    if (res.status !== "ok") {
+      return NextResponse.json({ error: "Групу не знайдено" }, { status: 404 });
+    }
+    return NextResponse.json(res.group, { status: 201 });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "Помилка сховища" }, { status: 502 });

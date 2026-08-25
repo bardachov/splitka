@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getGroup, saveGroup } from "@/lib/store";
+import { deleteEntry, getGroup, updateEntry } from "@/lib/store";
+import type { Entry } from "@/lib/types";
 import {
   MAX_AMOUNT,
   MAX_DESC_LEN,
@@ -62,14 +63,22 @@ export async function PUT(
       return NextResponse.json({ error: "Переказ має одного отримувача, не платника" }, { status: 400 });
     }
 
-    entry.description = entry.type === "settlement" ? description || "Переказ" : description;
-    entry.amount = amount;
-    entry.paidBy = payer;
-    entry.splitAmong = splitAmong;
-    entry.updatedAt = Date.now();
+    const updated: Entry = {
+      ...entry,
+      description:
+        entry.type === "settlement" ? description || "Переказ" : description,
+      amount,
+      paidBy: payer,
+      splitAmong,
+      updatedAt: Date.now(),
+    };
 
-    await saveGroup(group);
-    return NextResponse.json(group);
+    // Atomic in the store; refuses to write if the entry was deleted meanwhile.
+    const res = await updateEntry(id, updated);
+    if (res.status !== "ok") {
+      return NextResponse.json({ error: "Запис не знайдено" }, { status: 404 });
+    }
+    return NextResponse.json(res.group);
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "Помилка сховища" }, { status: 502 });
@@ -82,17 +91,16 @@ export async function DELETE(
 ) {
   try {
     const { id, expenseId } = await params;
+    // getGroup also lazily imports pre-migration groups into Redis.
     const group = await getGroup(id);
     if (!group) {
       return NextResponse.json({ error: "Групу не знайдено" }, { status: 404 });
     }
-    const before = group.entries.length;
-    group.entries = group.entries.filter((e) => e.id !== expenseId);
-    if (group.entries.length === before) {
+    const res = await deleteEntry(id, expenseId);
+    if (res.status !== "ok") {
       return NextResponse.json({ error: "Запис не знайдено" }, { status: 404 });
     }
-    await saveGroup(group);
-    return NextResponse.json(group);
+    return NextResponse.json(res.group);
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "Помилка сховища" }, { status: 502 });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createGroup, getGroup, saveGroup } from "@/lib/store";
+import { createGroup, getGroup } from "@/lib/store";
 import { computeNetBalances, simplifyDebts } from "@/lib/balances";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +41,6 @@ export async function GET() {
       createdAt: now,
     });
 
-    await saveGroup(group);
     const readBack = await getGroup(group.id);
     if (!readBack) throw new Error("Read-back failed");
 

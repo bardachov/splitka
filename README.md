@@ -7,7 +7,10 @@
 ## Стек
 
 - Next.js 16 (App Router) + React 19, TypeScript
-- Сховище: npoint.io (безкоштовний keyless JSON-стор) — шар ізольовано в `lib/store.ts`, легко замінити на KV/Postgres
+- Сховище: Upstash Redis (Vercel Marketplace) — шар ізольовано в `lib/store.ts`.
+  Група = Redis-хеш, кожна витрата/учасник — окреме поле, тож конкурентні
+  записи атомарні й не затирають одне одного. Старі групи зі старого сховища
+  (npoint.io) імпортуються ліниво при першому читанні.
 - Стилі: ванільний CSS (`app/globals.css`)
 - PWA: `app/manifest.ts` + `public/sw.js` (network-first, офлайн-фолбек з кешу)
 
@@ -17,6 +20,17 @@
 npm install
 npm run dev
 ```
+
+Сторові потрібні змінні оточення (у `.env.local` для локальної розробки):
+
+```
+UPSTASH_REDIS_REST_URL=...
+UPSTASH_REDIS_REST_TOKEN=...
+```
+
+На Vercel вони інжектяться автоматично після підключення Upstash for Redis
+через Marketplace (Storage → Create Database → Upstash for Redis). Клієнт
+також розуміє легасі-імена `KV_REST_API_URL`/`KV_REST_API_TOKEN`.
 
 ## Деплой
 
