@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/Modal";
+import { detectIosTarget, isIosUA, type IosTarget } from "@/lib/platform";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -13,13 +14,6 @@ function isStandalone(): boolean {
     window.matchMedia("(display-mode: standalone)").matches ||
     (navigator as Navigator & { standalone?: boolean }).standalone === true
   );
-}
-
-function isIos(): boolean {
-  const ua = navigator.userAgent;
-  // iPadOS у режимі «як на Mac» видає себе за Macintosh, але має тач
-  const iPadAsMac = /macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
-  return /iphone|ipad|ipod/i.test(ua) || iPadAsMac;
 }
 
 function ShareIcon() {
@@ -37,15 +31,50 @@ function ShareIcon() {
   );
 }
 
+function IosSteps({ target }: { target: Exclude<IosTarget, "inApp"> }) {
+  const where =
+    target === "safari"
+      ? "на панелі знизу"
+      : target === "topRight"
+        ? "справа вгорі"
+        : null;
+
+  return (
+    <ol className="install-steps">
+      {target === "behindMenu" && (
+        <li>
+          <span>
+            Відкрийте меню <b>«⋯»</b>
+          </span>
+        </li>
+      )}
+      <li>
+        <span>
+          Натисніть «Поділитися» <ShareIcon />
+          {where ? ` ${where}` : ""}
+        </span>
+      </li>
+      <li>
+        <span>
+          Оберіть <b>«На Початковий екран»</b>
+        </span>
+      </li>
+    </ol>
+  );
+}
+
 export default function PwaInstallPrompt() {
   const [mode, setMode] = useState<"hidden" | "install" | "ios">("hidden");
+  const [iosTarget, setIosTarget] = useState<IosTarget>("safari");
+  const [copied, setCopied] = useState(false);
   const [installEvent, setInstallEvent] =
     useState<BeforeInstallPromptEvent | null>(null);
 
   useEffect(() => {
     if (isStandalone()) return;
 
-    if (isIos()) {
+    if (isIosUA(navigator.userAgent, navigator.maxTouchPoints)) {
+      setIosTarget(detectIosTarget(navigator.userAgent));
       setMode("ios");
       return;
     }
@@ -75,26 +104,52 @@ export default function PwaInstallPrompt() {
     void ev.prompt();
   };
 
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  if (mode === "ios" && iosTarget === "inApp") {
+    return (
+      <Modal open onClose={close} title="Відкрийте у браузері">
+        <p className="confirm-message">
+          Ви у вбудованому браузері застосунку — звідси Splitka не
+          встановлюється, і ваше ім&apos;я в групі тут не збережеться.
+          Відкрийте це посилання в Safari або Chrome.
+        </p>
+        <ol className="install-steps">
+          <li>
+            <span>Скопіюйте лінк кнопкою нижче</span>
+          </li>
+          <li>
+            <span>Вставте його в адресний рядок Safari</span>
+          </li>
+        </ol>
+        <div className="modal-actions">
+          <button className="btn ghost" onClick={close}>
+            Пропустити
+          </button>
+          <button className="btn" onClick={copyLink}>
+            {copied ? "Скопійовано ✓" : "Скопіювати лінк"}
+          </button>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <Modal open={mode !== "hidden"} onClose={close} title="Встановіть Splitka">
       {mode === "ios" ? (
         <>
           <p className="confirm-message">
-            Додайте Splitka на Початковий екран — апка відкриватиметься
-            миттєво і працюватиме на весь екран.
+            Додайте Splitka на Початковий екран — апка відкриватиметься миттєво
+            і працюватиме на весь екран.
           </p>
-          <ol className="install-steps">
-            <li>
-              <span>
-                Натисніть «Поділитися» <ShareIcon /> в панелі Safari
-              </span>
-            </li>
-            <li>
-              <span>
-                Оберіть <b>«На Початковий екран»</b>
-              </span>
-            </li>
-          </ol>
+          <IosSteps target={iosTarget as Exclude<IosTarget, "inApp">} />
           <button className="btn" onClick={close}>
             Зрозуміло
           </button>
@@ -102,8 +157,8 @@ export default function PwaInstallPrompt() {
       ) : (
         <>
           <p className="confirm-message">
-            Додайте Splitka на головний екран — апка запускатиметься миттєво
-            і працюватиме як звичайний застосунок.
+            Додайте Splitka на головний екран — апка запускатиметься миттєво і
+            працюватиме як звичайний застосунок.
           </p>
           <div className="modal-actions">
             <button className="btn ghost" onClick={close}>
