@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
     const group = await createGroup({
       name,
       currency,
+      owner: creator,
       // Stagger createdAt so the member order is stable after re-assembly.
       members: [creator, ...extras].map((m, i) => ({ name: m, createdAt: now + i })),
       entries: [],

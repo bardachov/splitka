@@ -14,6 +14,7 @@ export async function GET() {
     const group = await createGroup({
       name: "Демо: Поїздка в Карпати",
       currency: "UAH",
+      owner: "Артем",
       members: [
         { name: "Артем", createdAt: now },
         { name: "Оля", createdAt: now },

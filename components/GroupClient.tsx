@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Entry, Group } from "@/lib/types";
 import { rememberGroup } from "@/lib/recentGroups";
-import { nameKey } from "@/lib/types";
+import { nameKey, normalizeName } from "@/lib/types";
 import {
   computeNetBalances,
   equalShares,
@@ -21,6 +21,8 @@ export default function GroupClient({ initialGroup }: { initialGroup: Group }) {
   const [me, setMe] = useState<string | null | undefined>(undefined);
   const [tab, setTab] = useState<Tab>("expenses");
   const [shareOpen, setShareOpen] = useState(false);
+  const [friendName, setFriendName] = useState("");
+  const [addingFriend, setAddingFriend] = useState(false);
   // navigator is unavailable during the server render pass.
   const [canShare] = useState(
     () => typeof navigator !== "undefined" && !!navigator.share
@@ -138,6 +140,33 @@ export default function GroupClient({ initialGroup }: { initialGroup: Group }) {
   const personalUrl = (name: string) =>
     `${groupUrl()}#me=${encodeURIComponent(name)}`;
 
+  const isAuthor =
+    typeof me === "string" && nameKey(me) === nameKey(group.owner);
+
+  async function addFriend() {
+    const name = normalizeName(friendName);
+    if (!name || addingFriend) return;
+    setAddingFriend(true);
+    try {
+      const res = await fetch(`/api/groups/${group.id}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data?.error ?? "Не вдалося додати");
+      } else {
+        setGroup(data);
+        setFriendName("");
+        showToast(`${name} у групі ✓`);
+      }
+    } catch {
+      showToast("Немає з'єднання");
+    }
+    setAddingFriend(false);
+  }
+
   if (me === undefined) {
     return <main className="container" />;
   }
@@ -246,6 +275,36 @@ export default function GroupClient({ initialGroup }: { initialGroup: Group }) {
             </button>
           </div>
         ))}
+
+        {isAuthor && (
+          <>
+            <div className="share-title">
+              Додати друга — його лінк з&apos;явиться в списку вище
+            </div>
+            <div className="member-add-row">
+              <input
+                type="text"
+                placeholder="Ім'я друга"
+                value={friendName}
+                maxLength={30}
+                onChange={(e) => setFriendName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addFriend();
+                  }
+                }}
+              />
+              <button
+                className="btn small secondary"
+                onClick={addFriend}
+                disabled={!friendName.trim() || addingFriend}
+              >
+                {addingFriend ? "Додаємо…" : "Додати"}
+              </button>
+            </div>
+          </>
+        )}
       </Modal>
 
       {toast && <div className="toast">{toast}</div>}

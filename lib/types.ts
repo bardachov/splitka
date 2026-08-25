@@ -23,6 +23,8 @@ export type Group = {
   id: string;
   name: string;
   currency: string;
+  /** Creator's member name; groups stored before this field existed fall back to the first member. */
+  owner: string;
   members: Member[];
   entries: Entry[];
   createdAt: number;

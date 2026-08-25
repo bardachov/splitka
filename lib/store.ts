@@ -19,7 +19,13 @@ import { MAX_ENTRIES, MAX_MEMBERS, nameKey } from "./types";
  * read imports such a group into Redis, after which all writes go to Redis.
  */
 
-type Meta = { name: string; currency: string; createdAt: number };
+type Meta = {
+  name: string;
+  currency: string;
+  createdAt: number;
+  /** Absent in groups stored before ownership existed. */
+  owner?: string;
+};
 
 export type MutationResult =
   | { status: "ok"; group: Group }
@@ -99,6 +105,8 @@ function assemble(id: string, data: Record<string, unknown>): Group | null {
     id,
     name: meta.name,
     currency: meta.currency,
+    // The creator has always been written first, so it is the safe fallback.
+    owner: meta.owner ?? members[0]?.name ?? "",
     members,
     entries,
     createdAt: meta.createdAt,
@@ -111,6 +119,7 @@ function toFields(group: Group): Record<string, unknown> {
       name: group.name,
       currency: group.currency,
       createdAt: group.createdAt,
+      owner: group.owner,
     } satisfies Meta,
   };
   for (const m of group.members) fields[`member:${nameKey(m.name)}`] = m;
@@ -214,7 +223,12 @@ async function importLegacyGroup(id: string): Promise<Group | null> {
   if (!data || !Array.isArray(data.members) || !Array.isArray(data.entries)) {
     return null;
   }
-  const group: Group = { ...data, id };
+  const group: Group = {
+    ...data,
+    id,
+    // Pre-migration groups never stored an owner; the creator joined first.
+    owner: data.owner ?? data.members[0]?.name ?? "",
+  };
   await redis().hset(keyOf(id), toFields(group));
   return group;
 }
