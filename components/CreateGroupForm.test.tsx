@@ -98,7 +98,7 @@ describe("CreateGroupForm", () => {
     expect(screen.getByRole("button", { name: "Прибрати Анна Марія" })).toBeTruthy();
   });
 
-  it("posts the group with friend names as a flat string array", async () => {
+  it("posts the group with friends as objects", async () => {
     const user = userEvent.setup();
     render(<CreateGroupForm />);
 
@@ -113,8 +113,73 @@ describe("CreateGroupForm", () => {
       name: "Карпати",
       currency: "UAH",
       creator: "Артем",
-      members: ["Оля", "Петро"],
+      creatorCard: "",
+      members: [{ name: "Оля" }, { name: "Петро" }],
     });
+  });
+
+  it("posts the creator's card as bare digits", async () => {
+    const user = userEvent.setup();
+    render(<CreateGroupForm />);
+
+    await fillRequiredFields(user);
+    await user.type(screen.getByLabelText(/Ваша картка/), "5375411234567894");
+    await user.click(screen.getByRole("button", { name: "Створити групу" }));
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect(postedBody().creatorCard).toBe("5375411234567894");
+  });
+
+  it("formats the card as it is typed", async () => {
+    const user = userEvent.setup();
+    render(<CreateGroupForm />);
+
+    const input = screen.getByLabelText(/Ваша картка/) as HTMLInputElement;
+    await user.type(input, "5375411234567894");
+
+    expect(input.value).toBe("5375 4112 3456 7894");
+  });
+
+  it("ignores non-digits and stops at 16 digits", async () => {
+    const user = userEvent.setup();
+    render(<CreateGroupForm />);
+
+    const input = screen.getByLabelText(/Ваша картка/) as HTMLInputElement;
+    await user.type(input, "5375-4112-3456-7894-999");
+
+    expect(input.value).toBe("5375 4112 3456 7894");
+  });
+
+  it("attaches a card to the friend it was typed with, then clears it", async () => {
+    const user = userEvent.setup();
+    render(<CreateGroupForm />);
+
+    await fillRequiredFields(user);
+    await user.type(screen.getByPlaceholderText("Ім'я друга"), "Оля");
+    const cardInput = screen.getByPlaceholderText(/Картка друга/) as HTMLInputElement;
+    await user.type(cardInput, "4149499312345679");
+    await user.click(screen.getByRole("button", { name: "Додати" }));
+
+    expect(cardInput.value).toBe("");
+    await user.type(screen.getByPlaceholderText("Ім'я друга"), "Петро{Enter}");
+    await user.click(screen.getByRole("button", { name: "Створити групу" }));
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect(postedBody().members).toEqual([
+      { name: "Оля", card: "4149499312345679" },
+      { name: "Петро" },
+    ]);
+  });
+
+  it("marks a friend who has a card", async () => {
+    const user = userEvent.setup();
+    render(<CreateGroupForm />);
+
+    await user.type(screen.getByPlaceholderText("Ім'я друга"), "Оля");
+    await user.type(screen.getByPlaceholderText(/Картка друга/), "4149499312345679");
+    await user.click(screen.getByRole("button", { name: "Додати" }));
+
+    expect(screen.getByRole("button", { name: /Прибрати Оля/ }).textContent).toContain("💳");
   });
 
   it("navigates to the new group and remembers the identity", async () => {

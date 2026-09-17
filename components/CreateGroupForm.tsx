@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CURRENCIES, MAX_MEMBERS, nameKey, normalizeName } from "@/lib/types";
+import {
+  CURRENCIES,
+  formatCard,
+  MAX_MEMBERS,
+  nameKey,
+  normalizeCard,
+  normalizeName,
+} from "@/lib/types";
 import { rememberGroup } from "@/lib/recentGroups";
 
 const CURRENCY_LABELS: Record<string, string> = {
@@ -13,7 +20,7 @@ const CURRENCY_LABELS: Record<string, string> = {
 };
 
 /** A friend queued up locally; nothing exists server-side until submit. */
-type NewMember = { name: string };
+type NewMember = { name: string; card?: string };
 
 export default function CreateGroupForm() {
   const router = useRouter();
@@ -22,6 +29,8 @@ export default function CreateGroupForm() {
   const [currency, setCurrency] = useState("UAH");
   const [members, setMembers] = useState<NewMember[]>([]);
   const [memberInput, setMemberInput] = useState("");
+  const [creatorCard, setCreatorCard] = useState("");
+  const [memberCard, setMemberCard] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,8 +49,10 @@ export default function CreateGroupForm() {
       return;
     }
     setError(null);
-    setMembers([...members, { name: member }]);
+    const card = normalizeCard(memberCard);
+    setMembers([...members, { name: member, ...(card ? { card } : {}) }]);
     setMemberInput("");
+    setMemberCard("");
   }
 
   function removeMember(member: string) {
@@ -60,7 +71,8 @@ export default function CreateGroupForm() {
           name,
           currency,
           creator,
-          members: members.map((m) => m.name),
+          creatorCard: normalizeCard(creatorCard),
+          members,
         }),
       });
       const data = await res.json();
@@ -122,6 +134,21 @@ export default function CreateGroupForm() {
         </div>
       </div>
 
+      <label htmlFor="ccard">Ваша картка (необов&apos;язково)</label>
+      <input
+        id="ccard"
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        placeholder="0000 0000 0000 0000"
+        value={formatCard(creatorCard)}
+        maxLength={19}
+        onChange={(e) => setCreatorCard(normalizeCard(e.target.value))}
+      />
+      <p className="field-note">
+        Друзі побачать її там, де треба переказати вам гроші
+      </p>
+
       <label htmlFor="mname">Друзі в групі (можна додати пізніше)</label>
       <div className="member-add-row">
         <input
@@ -147,6 +174,21 @@ export default function CreateGroupForm() {
           Додати
         </button>
       </div>
+      <input
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        placeholder="Картка друга (необов'язково)"
+        value={formatCard(memberCard)}
+        maxLength={19}
+        onChange={(e) => setMemberCard(normalizeCard(e.target.value))}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            addMember();
+          }
+        }}
+      />
       {members.length > 0 && (
         <div className="chips">
           {members.map((m) => (
@@ -157,7 +199,7 @@ export default function CreateGroupForm() {
               onClick={() => removeMember(m.name)}
               aria-label={`Прибрати ${m.name}`}
             >
-              {m.name} <span className="chip-x">✕</span>
+              {m.name}{m.card ? " 💳" : ""} <span className="chip-x">✕</span>
             </button>
           ))}
         </div>

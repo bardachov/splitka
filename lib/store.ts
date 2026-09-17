@@ -90,6 +90,21 @@ redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
 return 1
 `;
 
+/**
+ * Write only while the member still exists — a plain HSET racing a concurrent
+ * delete would resurrect the removed member, and one aimed at a missing group
+ * would conjure a hash with no meta field. HEXISTS on an absent key returns 0,
+ * so this single guard covers both, plus an unknown member name.
+ *
+ * No member-cap check is needed: the field already exists, so the count cannot
+ * grow.
+ */
+export const UPDATE_MEMBER_SCRIPT = `
+if redis.call('HEXISTS', KEYS[1], ARGV[1]) == 0 then return 0 end
+redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
+return 1
+`;
+
 function assemble(id: string, data: Record<string, unknown>): Group | null {
   const meta = data.meta as Meta | undefined;
   if (!meta || typeof meta.name !== "string") return null;
@@ -157,6 +172,20 @@ export async function addMember(
     const existing = await redis().hget<Member>(key, field);
     return { status: "exists", existing: existing?.name ?? member.name };
   }
+  return okWithGroup(id);
+}
+
+/** Overwrites the member's whole record; callers pass a stored Member, patched. */
+export async function updateMember(
+  id: string,
+  member: Member
+): Promise<MutationResult> {
+  const res = await redis().eval<[string, string], number>(
+    UPDATE_MEMBER_SCRIPT,
+    [keyOf(id)],
+    [`member:${nameKey(member.name)}`, JSON.stringify(member)]
+  );
+  if (res === 0) return { status: "not_found" };
   return okWithGroup(id);
 }
 

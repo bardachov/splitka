@@ -4,7 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Entry, Group } from "@/lib/types";
 import { rememberGroup } from "@/lib/recentGroups";
-import { findMember, nameKey, normalizeName } from "@/lib/types";
+import {
+  cardError,
+  findMember,
+  formatCard,
+  nameKey,
+  normalizeCard,
+  normalizeName,
+} from "@/lib/types";
 import { copyText } from "@/lib/clipboard";
 import {
   computeNetBalances,
@@ -14,6 +21,7 @@ import {
 } from "@/lib/balances";
 import { formatDate, formatDateTime, formatMoney, parseAmount } from "@/lib/money";
 import { ConfirmDialog, Modal } from "@/components/Modal";
+import { CardCopy } from "@/components/CardCopy";
 
 type Tab = "expenses" | "balances";
 
@@ -22,6 +30,7 @@ export default function GroupClient({ initialGroup }: { initialGroup: Group }) {
   const [me, setMe] = useState<string | null | undefined>(undefined);
   const [tab, setTab] = useState<Tab>("expenses");
   const [shareOpen, setShareOpen] = useState(false);
+  const [cardOpen, setCardOpen] = useState(false);
   const [friendName, setFriendName] = useState("");
   const [addingFriend, setAddingFriend] = useState(false);
   // navigator is unavailable during the server render pass.
@@ -159,6 +168,9 @@ export default function GroupClient({ initialGroup }: { initialGroup: Group }) {
     setAddingFriend(false);
   }
 
+  const myCard =
+    typeof me === "string" ? (findMember(group.members, me)?.card ?? "") : "";
+
   if (me === undefined) {
     return <main className="container" />;
   }
@@ -197,12 +209,20 @@ export default function GroupClient({ initialGroup }: { initialGroup: Group }) {
             <button onClick={resetIdentity}>змінити</button>
           </div>
         </div>
-        <button
-          className="btn small secondary"
-          onClick={() => setShareOpen(true)}
-        >
-          Поділитися
-        </button>
+        <div className="group-header-actions">
+          <button
+            className="btn small secondary"
+            onClick={() => setShareOpen(true)}
+          >
+            Поділитися
+          </button>
+          <button
+            className="btn small secondary"
+            onClick={() => setCardOpen(true)}
+          >
+            {myCard ? "Моя картка" : "Додати картку"}
+          </button>
+        </div>
       </div>
 
       <div className="tabs">
@@ -250,10 +270,13 @@ export default function GroupClient({ initialGroup }: { initialGroup: Group }) {
         </div>
         {group.members.map((m) => (
           <div className="share-row" key={m.name}>
-            <span className="share-name">
-              {m.name}
-              {m.name === me ? " (ви)" : ""}
-            </span>
+            <div className="row-stack">
+              <span className="share-name">
+                {m.name}
+                {m.name === me ? " (ви)" : ""}
+              </span>
+              {m.card && <CardCopy card={m.card} showToast={showToast} />}
+            </div>
             <button
               className="btn small secondary"
               onClick={() =>
@@ -299,11 +322,115 @@ export default function GroupClient({ initialGroup }: { initialGroup: Group }) {
         )}
       </Modal>
 
+      <MyCardModal
+        open={cardOpen}
+        group={group}
+        me={me}
+        currentCard={myCard}
+        onClose={() => setCardOpen(false)}
+        onSaved={setGroup}
+        showToast={showToast}
+      />
+
       {toast && <div className="toast">{toast}</div>}
       <p className="footer-note">
         Учасників: {group.members.length} · Кожен з цим лінком бачить групу
       </p>
     </main>
+  );
+}
+
+/* ---------------- My card ---------------- */
+
+/** Everyone edits their own card; nobody edits anyone else's. */
+function MyCardModal({
+  open,
+  group,
+  me,
+  currentCard,
+  onClose,
+  onSaved,
+  showToast,
+}: {
+  open: boolean;
+  group: Group;
+  me: string;
+  currentCard: string;
+  onClose: () => void;
+  onSaved: (g: Group) => void;
+  showToast: (m: string) => void;
+}) {
+  const [card, setCard] = useState(currentCard);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reopening after someone else's edit landed should show the current value.
+  useEffect(() => {
+    if (open) {
+      setCard(currentCard);
+      setError(null);
+    }
+  }, [open, currentCard]);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    const digits = normalizeCard(card);
+    const badCard = cardError(digits);
+    if (badCard) {
+      setError(badCard);
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/groups/${group.id}/members`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: me, card: digits }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data?.error ?? "Не вдалося зберегти");
+        setBusy(false);
+        return;
+      }
+      onSaved(data);
+      showToast(digits ? "Картку збережено ✓" : "Картку прибрано");
+      onClose();
+    } catch {
+      setError("Немає з'єднання. Спробуйте ще раз.");
+    }
+    setBusy(false);
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Моя картка">
+      <form onSubmit={save}>
+        <label htmlFor="mycard">Куди переказувати вам гроші</label>
+        <input
+          id="mycard"
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="0000 0000 0000 0000"
+          value={formatCard(card)}
+          maxLength={19}
+          onChange={(e) => setCard(normalizeCard(e.target.value))}
+        />
+        <p className="field-note">
+          Її побачить кожен у групі — там, де треба переказати вам гроші.
+          Порожнє поле прибирає картку.
+        </p>
+        {error && <div className="error">{error}</div>}
+        <div className="modal-actions">
+          <button type="button" className="btn ghost" onClick={onClose} disabled={busy}>
+            Скасувати
+          </button>
+          <button className="btn" type="submit" disabled={busy}>
+            {busy ? "Зберігаємо…" : "Зберегти"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -319,16 +446,40 @@ function JoinScreen({
   onPick: (name: string) => void;
 }) {
   const [name, setName] = useState("");
+  const [card, setCard] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * A member the author pre-added never reaches the POST below, so their card
+   * has to be saved on its own — otherwise it is silently dropped.
+   */
+  async function saveCardFor(memberName: string, digits: string) {
+    if (!digits) return;
+    try {
+      await fetch(`/api/groups/${group.id}/members`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: memberName, card: digits }),
+      });
+    } catch {}
+  }
 
   async function join(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     const trimmed = name.trim();
     if (!trimmed) return;
+    const digits = normalizeCard(card);
+    const badCard = cardError(digits);
+    if (badCard) {
+      setError(badCard);
+      return;
+    }
     const existing = findMember(group.members, trimmed);
     if (existing) {
+      setBusy(true);
+      await saveCardFor(existing.name, digits);
       onPick(existing.name);
       return;
     }
@@ -337,10 +488,11 @@ function JoinScreen({
       const res = await fetch(`/api/groups/${group.id}/members`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmed }),
+        body: JSON.stringify({ name: trimmed, card: digits }),
       });
       const data = await res.json();
       if (res.status === 409 && data?.existing) {
+        await saveCardFor(data.existing, digits);
         onPick(data.existing);
         return;
       }
@@ -397,6 +549,20 @@ function JoinScreen({
           onChange={(e) => setName(e.target.value)}
           required
         />
+        <label htmlFor="jcard">Ваша картка (необов&apos;язково)</label>
+        <input
+          id="jcard"
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="0000 0000 0000 0000"
+          value={formatCard(card)}
+          maxLength={19}
+          onChange={(e) => setCard(normalizeCard(e.target.value))}
+        />
+        <p className="field-note">
+          Друзі побачать її там, де треба переказати вам гроші
+        </p>
         {error && <div className="error">{error}</div>}
         <button className="btn" type="submit" disabled={busy}>
           {busy ? "Заходимо…" : "Приєднатися"}
@@ -831,8 +997,10 @@ function BalancesTab({
   const [busy, setBusy] = useState(false);
 
   const rows = group.members
-    .map((m) => ({ name: m.name, balance: net.get(m.name) ?? 0 }))
+    .map((m) => ({ name: m.name, card: m.card, balance: net.get(m.name) ?? 0 }))
     .sort((a, b) => b.balance - a.balance);
+
+  const cardOf = (name: string) => findMember(group.members, name)?.card;
 
   async function confirmSettle() {
     if (!pending) return;
@@ -869,10 +1037,13 @@ function BalancesTab({
         <h2>Баланс кожного</h2>
         {rows.map((r) => (
           <div className="balance-row" key={r.name}>
-            <span className="name">
-              {r.name}
-              {r.name === me ? " (ви)" : ""}
-            </span>
+            <div className="row-stack">
+              <span className="name">
+                {r.name}
+                {r.name === me ? " (ви)" : ""}
+              </span>
+              {r.card && <CardCopy card={r.card} showToast={showToast} />}
+            </div>
             <span
               className={r.balance > 0 ? "pos" : r.balance < 0 ? "neg" : "zero"}
             >
@@ -897,10 +1068,16 @@ function BalancesTab({
             const key = `${t.from}->${t.to}`;
             return (
               <div className="transfer-row" key={key}>
-                <span>
-                  <b>{t.from}</b> → <b>{t.to}</b>:{" "}
-                  {formatMoney(t.amount, group.currency)}
-                </span>
+                <div className="row-stack">
+                  <span>
+                    <b>{t.from}</b> → <b>{t.to}</b>:{" "}
+                    {formatMoney(t.amount, group.currency)}
+                  </span>
+                  {/* The recipient's card — that is where the money goes. */}
+                  {cardOf(t.to) && (
+                    <CardCopy card={cardOf(t.to)!} showToast={showToast} />
+                  )}
+                </div>
                 <button
                   className="btn small secondary"
                   onClick={() => setPending(t)}
