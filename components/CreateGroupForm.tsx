@@ -12,12 +12,15 @@ const CURRENCY_LABELS: Record<string, string> = {
   PLN: "zł Злотий (PLN)",
 };
 
+/** A friend queued up locally; nothing exists server-side until submit. */
+type NewMember = { name: string };
+
 export default function CreateGroupForm() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [creator, setCreator] = useState("");
   const [currency, setCurrency] = useState("UAH");
-  const [members, setMembers] = useState<string[]>([]);
+  const [members, setMembers] = useState<NewMember[]>([]);
   const [memberInput, setMemberInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +28,7 @@ export default function CreateGroupForm() {
   function addMember() {
     const member = normalizeName(memberInput);
     if (!member) return;
-    const taken = [creator, ...members].some(
+    const taken = [creator, ...members.map((m) => m.name)].some(
       (n) => nameKey(n) === nameKey(member)
     );
     if (taken) {
@@ -37,12 +40,12 @@ export default function CreateGroupForm() {
       return;
     }
     setError(null);
-    setMembers([...members, member]);
+    setMembers([...members, { name: member }]);
     setMemberInput("");
   }
 
   function removeMember(member: string) {
-    setMembers(members.filter((m) => m !== member));
+    setMembers(members.filter((m) => m.name !== member));
   }
 
   async function submit(e: React.FormEvent) {
@@ -53,7 +56,12 @@ export default function CreateGroupForm() {
       const res = await fetch("/api/groups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, currency, creator, members }),
+        body: JSON.stringify({
+          name,
+          currency,
+          creator,
+          members: members.map((m) => m.name),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -143,13 +151,13 @@ export default function CreateGroupForm() {
         <div className="chips">
           {members.map((m) => (
             <button
-              key={m}
+              key={m.name}
               type="button"
               className="chip removable"
-              onClick={() => removeMember(m)}
-              aria-label={`Прибрати ${m}`}
+              onClick={() => removeMember(m.name)}
+              aria-label={`Прибрати ${m.name}`}
             >
-              {m} <span className="chip-x">✕</span>
+              {m.name} <span className="chip-x">✕</span>
             </button>
           ))}
         </div>
