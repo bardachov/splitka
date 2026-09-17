@@ -42,12 +42,22 @@ function stubClipboard(writeText: () => Promise<void>) {
   });
 }
 
+/** Answers every write with the group as the server would return it after. */
 function stubFetch() {
-  const fetchMock = vi.fn(async () => ({
-    ok: true,
-    status: 200,
-    json: async () => GROUP,
-  }));
+  const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+    const body = init?.body ? JSON.parse(String(init.body)) : null;
+    const group: Group = body?.name
+      ? {
+          ...GROUP,
+          members: GROUP.members.map((m) =>
+            m.name.toLowerCase() === String(body.name).toLowerCase()
+              ? { ...m, card: body.card || undefined }
+              : m
+          ),
+        }
+      : GROUP;
+    return { ok: true, status: 200, json: async () => group };
+  });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
@@ -219,6 +229,19 @@ describe("joining with a card", () => {
 
     await waitFor(() => expect(lastMethod()).toBe("PUT"));
     expect(lastBody()).toEqual({ name: "Петро", card: ARTEM_CARD });
+  });
+
+  it("reflects the saved card immediately, without waiting for a poll", async () => {
+    const user = userEvent.setup();
+    render(<GroupClient initialGroup={GROUP} />);
+
+    await user.type(await screen.findByLabelText(/Ваше ім/), "Петро");
+    await user.type(screen.getByLabelText(/Ваша картка/), ARTEM_CARD);
+    await user.click(screen.getByRole("button", { name: "Приєднатися" }));
+
+    // The PUT response carries the updated group; ignoring it would leave the
+    // header offering to add a card the member just set.
+    expect(await screen.findByRole("button", { name: "Моя картка" })).toBeTruthy();
   });
 
   it("refuses an invalid card before joining", async () => {

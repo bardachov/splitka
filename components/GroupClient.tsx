@@ -452,17 +452,31 @@ function JoinScreen({
 
   /**
    * A member the author pre-added never reaches the POST below, so their card
-   * has to be saved on its own — otherwise it is silently dropped.
+   * has to be saved on its own — otherwise it is silently dropped. Returns the
+   * updated group so the caller can show it without waiting for the poll.
    */
-  async function saveCardFor(memberName: string, digits: string) {
-    if (!digits) return;
+  async function saveCardFor(
+    memberName: string,
+    digits: string
+  ): Promise<Group | null> {
+    if (!digits) return null;
     try {
-      await fetch(`/api/groups/${group.id}/members`, {
+      const res = await fetch(`/api/groups/${group.id}/members`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: memberName, card: digits }),
       });
-    } catch {}
+      return res.ok ? ((await res.json()) as Group) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Enter the group as someone already on the list, card saved or not. */
+  async function enterAs(memberName: string, digits: string) {
+    const updated = await saveCardFor(memberName, digits);
+    if (updated) onJoined(updated, memberName);
+    else onPick(memberName);
   }
 
   async function join(e: React.FormEvent) {
@@ -479,8 +493,7 @@ function JoinScreen({
     const existing = findMember(group.members, trimmed);
     if (existing) {
       setBusy(true);
-      await saveCardFor(existing.name, digits);
-      onPick(existing.name);
+      await enterAs(existing.name, digits);
       return;
     }
     setBusy(true);
@@ -492,8 +505,7 @@ function JoinScreen({
       });
       const data = await res.json();
       if (res.status === 409 && data?.existing) {
-        await saveCardFor(data.existing, digits);
-        onPick(data.existing);
+        await enterAs(data.existing, digits);
         return;
       }
       if (!res.ok) {
