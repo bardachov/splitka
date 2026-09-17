@@ -47,3 +47,11 @@ export function normalizeName(name: string): string {
 export function nameKey(name: string): string {
   return normalizeName(name).toLocaleLowerCase("uk-UA");
 }
+
+/** Members are looked up by name, ignoring case and stray whitespace. */
+export function findMember(
+  members: Member[],
+  name: string
+): Member | undefined {
+  return members.find((m) => nameKey(m.name) === nameKey(name));
+}

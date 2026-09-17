@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Entry, Group } from "@/lib/types";
 import { rememberGroup } from "@/lib/recentGroups";
-import { nameKey, normalizeName } from "@/lib/types";
+import { findMember, nameKey, normalizeName } from "@/lib/types";
+import { copyText } from "@/lib/clipboard";
 import {
   computeNetBalances,
   equalShares,
@@ -47,9 +48,7 @@ export default function GroupClient({ initialGroup }: { initialGroup: Group }) {
         ? new URLSearchParams(hash.slice(1)).get("me")
         : null;
       if (claimed) {
-        const member = initialGroup.members.find(
-          (m) => nameKey(m.name) === nameKey(claimed)
-        );
+        const member = findMember(initialGroup.members, claimed);
         if (member) fromLink = member.name;
         // Drop the hash so copying the URL from the address bar shares the
         // group, not this person's identity.
@@ -70,9 +69,7 @@ export default function GroupClient({ initialGroup }: { initialGroup: Group }) {
       saved = localStorage.getItem(storageKey);
     } catch {}
     if (saved) {
-      const member = initialGroup.members.find(
-        (m) => nameKey(m.name) === nameKey(saved!)
-      );
+      const member = findMember(initialGroup.members, saved);
       setMe(member ? member.name : null);
     } else {
       setMe(null);
@@ -128,12 +125,7 @@ export default function GroupClient({ initialGroup }: { initialGroup: Group }) {
         return;
       } catch {}
     }
-    try {
-      await navigator.clipboard.writeText(url);
-      showToast("Лінк скопійовано ✓");
-    } catch {
-      showToast(url);
-    }
+    showToast((await copyText(url)) ? "Лінк скопійовано ✓" : url);
   }
 
   const groupUrl = () => `${window.location.origin}/g/${group.id}`;
@@ -335,9 +327,7 @@ function JoinScreen({
     setError(null);
     const trimmed = name.trim();
     if (!trimmed) return;
-    const existing = group.members.find(
-      (m) => nameKey(m.name) === nameKey(trimmed)
-    );
+    const existing = findMember(group.members, trimmed);
     if (existing) {
       onPick(existing.name);
       return;

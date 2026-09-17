@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/Modal";
 import { detectIosTarget, isIosUA, type IosTarget } from "@/lib/platform";
+import { copyText } from "@/lib/clipboard";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -105,12 +106,7 @@ export default function PwaInstallPrompt() {
   };
 
   async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
+    setCopied(await copyText(window.location.href));
   }
 
   if (mode === "ios" && iosTarget === "inApp") {
