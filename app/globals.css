@@ -258,6 +258,13 @@ button {
   margin-top: 16px;
 }
 
+.group-header-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
+}
+
 .group-header h1 {
   margin: 0;
   font-size: 24px;
@@ -397,6 +404,49 @@ button {
 .zero {
   color: var(--muted);
   font-weight: 600;
+}
+
+/* Name on top, card underneath, while the row's right-hand button stays put. */
+.row-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.card-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.card-copy:hover,
+.card-copy:focus-visible {
+  color: var(--accent-dark);
+}
+
+.card-copy-icon {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.field-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .transfer-row {

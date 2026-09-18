@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CURRENCIES, MAX_MEMBERS, nameKey, normalizeName } from "@/lib/types";
+import {
+  CURRENCIES,
+  formatCard,
+  MAX_MEMBERS,
+  nameKey,
+  normalizeCard,
+  normalizeName,
+} from "@/lib/types";
 import { rememberGroup } from "@/lib/recentGroups";
 
 const CURRENCY_LABELS: Record<string, string> = {
@@ -12,20 +19,25 @@ const CURRENCY_LABELS: Record<string, string> = {
   PLN: "zł Злотий (PLN)",
 };
 
+/** A friend queued up locally; nothing exists server-side until submit. */
+type NewMember = { name: string; card?: string };
+
 export default function CreateGroupForm() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [creator, setCreator] = useState("");
   const [currency, setCurrency] = useState("UAH");
-  const [members, setMembers] = useState<string[]>([]);
+  const [members, setMembers] = useState<NewMember[]>([]);
   const [memberInput, setMemberInput] = useState("");
+  const [creatorCard, setCreatorCard] = useState("");
+  const [memberCard, setMemberCard] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function addMember() {
     const member = normalizeName(memberInput);
     if (!member) return;
-    const taken = [creator, ...members].some(
+    const taken = [creator, ...members.map((m) => m.name)].some(
       (n) => nameKey(n) === nameKey(member)
     );
     if (taken) {
@@ -37,12 +49,14 @@ export default function CreateGroupForm() {
       return;
     }
     setError(null);
-    setMembers([...members, member]);
+    const card = normalizeCard(memberCard);
+    setMembers([...members, { name: member, ...(card ? { card } : {}) }]);
     setMemberInput("");
+    setMemberCard("");
   }
 
   function removeMember(member: string) {
-    setMembers(members.filter((m) => m !== member));
+    setMembers(members.filter((m) => m.name !== member));
   }
 
   async function submit(e: React.FormEvent) {
@@ -53,7 +67,13 @@ export default function CreateGroupForm() {
       const res = await fetch("/api/groups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, currency, creator, members }),
+        body: JSON.stringify({
+          name,
+          currency,
+          creator,
+          creatorCard: normalizeCard(creatorCard),
+          members,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -114,6 +134,21 @@ export default function CreateGroupForm() {
         </div>
       </div>
 
+      <label htmlFor="ccard">Ваша картка (необов&apos;язково)</label>
+      <input
+        id="ccard"
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        placeholder="0000 0000 0000 0000"
+        value={formatCard(creatorCard)}
+        maxLength={19}
+        onChange={(e) => setCreatorCard(normalizeCard(e.target.value))}
+      />
+      <p className="field-note">
+        Друзі побачать її там, де треба переказати вам гроші
+      </p>
+
       <label htmlFor="mname">Друзі в групі (можна додати пізніше)</label>
       <div className="member-add-row">
         <input
@@ -139,17 +174,32 @@ export default function CreateGroupForm() {
           Додати
         </button>
       </div>
+      <input
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        placeholder="Картка друга (необов'язково)"
+        value={formatCard(memberCard)}
+        maxLength={19}
+        onChange={(e) => setMemberCard(normalizeCard(e.target.value))}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            addMember();
+          }
+        }}
+      />
       {members.length > 0 && (
         <div className="chips">
           {members.map((m) => (
             <button
-              key={m}
+              key={m.name}
               type="button"
               className="chip removable"
-              onClick={() => removeMember(m)}
-              aria-label={`Прибрати ${m}`}
+              onClick={() => removeMember(m.name)}
+              aria-label={`Прибрати ${m.name}`}
             >
-              {m} <span className="chip-x">✕</span>
+              {m.name}{m.card ? " 💳" : ""} <span className="chip-x">✕</span>
             </button>
           ))}
         </div>
